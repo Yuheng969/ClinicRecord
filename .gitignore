@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Android Studio / IntelliJ local state
+*.iml
+.idea/
+
+# Gradle / Kotlin generated files
+.gradle/
+.kotlin/
+build/
+**/build/
+
+# Local machine configuration
+local.properties
+
+# Android generated / native build outputs
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Packaged artifacts and signing material
+*.apk
+*.ap_
+*.aab
+*.jks
+*.keystore
+
+# Logs
+*.log
