@@ -1,5 +1,6 @@
 package com.example.clinicrecord.ui
 
+import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.clinicrecord.data.DeletedRecord
@@ -45,6 +47,7 @@ fun TrashScreen(
     viewModel: ClinicViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val records by viewModel.recentDeletedRecords.collectAsState()
     var recordPendingRestore by remember { mutableStateOf<DeletedRecord?>(null) }
     var recordPendingPermanentDelete by remember { mutableStateOf<DeletedRecord?>(null) }
@@ -118,6 +121,9 @@ fun TrashScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        if (restoreRecord.recordType == "随笔") {
+                            restoreEssay(context, restoreRecord.payload.ifBlank { restoreRecord.summary })
+                        }
                         viewModel.restoreDeletedRecord(restoreRecord)
                         recordPendingRestore = null
                     }
@@ -229,4 +235,15 @@ private fun formatDeletedTime(timestamp: Long): String {
     return Instant.ofEpochMilli(timestamp)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("yyyy年MM月dd日 HH:mm"))
+}
+
+private fun restoreEssay(context: Context, text: String) {
+    val normalized = text.trim()
+    if (normalized.isBlank()) return
+    val preferences = context.getSharedPreferences("clinic_record_essays", Context.MODE_PRIVATE)
+    val current = preferences.getStringSet("items", emptySet()).orEmpty()
+    val restored = current + "${System.currentTimeMillis()}|$normalized"
+    preferences.edit()
+        .putStringSet("items", restored)
+        .apply()
 }

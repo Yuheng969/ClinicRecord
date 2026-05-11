@@ -63,6 +63,8 @@ data class Visit(
     val pulseDescription: String,
     val corePathogenesis: String,
     val treatmentMethod: String,
+    @ColumnInfo(defaultValue = "''")
+    val patentMedicineAcupuncture: String = "",
     val clinicalNote: String
 )
 

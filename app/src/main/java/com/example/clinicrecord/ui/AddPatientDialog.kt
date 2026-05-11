@@ -1,15 +1,22 @@
 package com.example.clinicrecord.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,10 +40,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.clinicrecord.viewmodel.ClinicViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPatientDialog(
     viewModel: ClinicViewModel,
     initialFolderName: String,
+    folders: List<String>,
     onDismiss: () -> Unit
 ) {
     val nextOptions = KeyboardOptions(imeAction = ImeAction.Next)
@@ -52,7 +61,13 @@ fun AddPatientDialog(
     var contact by remember { mutableStateOf("") }
     var nativePlace by remember { mutableStateOf("") }
     var folderName by remember { mutableStateOf(initialFolderName) }
+    var folderMenuExpanded by remember { mutableStateOf(false) }
     var pastHistory by remember { mutableStateOf("") }
+    val folderOptions = remember(folders) {
+        listOf(ClinicViewModel.FOLDER_UNCATEGORIZED)
+            .plus(folders)
+            .distinct()
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -132,18 +147,47 @@ fun AddPatientDialog(
                         .focusRequester(nativePlaceRequester)
                         .moveFocusOnEnter(folderRequester)
                 )
-                OutlinedTextField(
-                    value = folderName,
-                    onValueChange = { folderName = it },
-                    label = { Text("所在文件夹") },
-                    singleLine = true,
-                    keyboardOptions = nextOptions,
-                    keyboardActions = KeyboardActions(onNext = { pastHistoryRequester.requestFocus() }),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(folderRequester)
-                        .moveFocusOnEnter(pastHistoryRequester)
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = folderName,
+                        onValueChange = { },
+                        label = { Text("所在文件夹") },
+                        singleLine = true,
+                        readOnly = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        keyboardOptions = nextOptions,
+                        keyboardActions = KeyboardActions(onNext = { pastHistoryRequester.requestFocus() }),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(folderRequester)
+                            .moveFocusOnEnter(pastHistoryRequester)
+                    )
+                    DropdownMenu(
+                        expanded = folderMenuExpanded,
+                        onDismissRequest = { folderMenuExpanded = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        folderOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    folderName = option
+                                    folderMenuExpanded = false
+                                    pastHistoryRequester.requestFocus()
+                                }
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .padding(top = 8.dp)
+                            .clickable { folderMenuExpanded = true }
+                    )
+                }
                 OutlinedTextField(
                     value = pastHistory,
                     onValueChange = { pastHistory = it },

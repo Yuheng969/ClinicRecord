@@ -7,6 +7,7 @@
 
 # Gradle / Kotlin generated files
 .gradle/
+.gradle_local_cache/
 .kotlin/
 build/
 **/build/
@@ -20,6 +21,7 @@ captures/
 .cxx/
 
 # Packaged artifacts and signing material
+app/release/
 *.apk
 *.ap_
 *.aab

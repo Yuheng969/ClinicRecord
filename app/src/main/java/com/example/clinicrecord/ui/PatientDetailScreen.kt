@@ -93,7 +93,8 @@ fun PatientDetailScreen(
         } else {
             PatientDetailContent(
                 detail = detail,
-                modifier = Modifier.padding(innerPadding),
+                modifier = Modifier
+                    .padding(innerPadding),
                 onVisitClick = onVisitClick,
                 onEditPatient = { showEditPatientDialog = true }
             )

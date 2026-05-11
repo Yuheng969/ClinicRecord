@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -29,6 +30,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
@@ -42,6 +44,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +83,8 @@ fun PatientListScreen(
     var selectedPatientForActions by remember { mutableStateOf<Patient?>(null) }
     var patientPendingDelete by remember { mutableStateOf<Patient?>(null) }
     var folderPendingDelete by remember { mutableStateOf<String?>(null) }
+    var patientSearchQuery by remember { mutableStateOf("") }
+    var showPatientSearch by remember { mutableStateOf(false) }
 
     fun selectFolder(folderName: String) {
         viewModel.selectFolder(folderName)
@@ -129,6 +134,38 @@ fun PatientListScreen(
                             text = selectedFolderTitle(selectedFolder),
                             style = MaterialTheme.typography.titleLarge
                         )
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { showPatientSearch = true }) {
+                                SearchIcon()
+                            }
+                            DropdownMenu(
+                                expanded = showPatientSearch,
+                                onDismissRequest = { showPatientSearch = false }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(280.dp)
+                                        .padding(12.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = patientSearchQuery,
+                                        onValueChange = { patientSearchQuery = it },
+                                        placeholder = { Text("按姓名检索患者") },
+                                        singleLine = true,
+                                        trailingIcon = {
+                                            if (patientSearchQuery.isNotBlank()) {
+                                                IconButton(onClick = { patientSearchQuery = "" }) {
+                                                    Text("×")
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
                     }
                 )
             },
@@ -147,6 +184,9 @@ fun PatientListScreen(
         ) { innerPadding ->
             PatientListContent(
                 patients = patients,
+                allPatients = allPatients,
+                searchQuery = patientSearchQuery,
+                onSearchQueryChange = { patientSearchQuery = it },
                 modifier = Modifier
                     .padding(innerPadding)
                     .background(MaterialTheme.colorScheme.background),
@@ -160,6 +200,7 @@ fun PatientListScreen(
         AddPatientDialog(
             viewModel = viewModel,
             initialFolderName = defaultAddFolder(selectedFolder),
+            folders = folders,
             onDismiss = { showAddDialog = false }
         )
     }
@@ -298,29 +339,37 @@ private fun PatientFolderDrawer(
                 onClick = { onSelectFolder(ClinicViewModel.FOLDER_UNCATEGORIZED) }
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
-            Text(
-                text = "文件",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            folders.forEach { folderName ->
-                DrawerFolderItem(
-                    title = folderName,
-                    countText = folderCount(folderName).toString(),
-                    selected = selectedFolder == folderName,
-                    leading = { DrawerCategoryIcon(DrawerIconKind.Folder) },
-                    onClick = { onSelectFolder(folderName) },
-                    onRename = { onRenameFolder(folderName) },
-                    onDelete = { onDeleteFolder(folderName) }
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(
-                onClick = onNewFolderClick,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("+ 新建文件夹")
+                Text(
+                    text = "文件",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = onNewFolderClick) {
+                    Text("+ 新建")
+                }
+            }
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(folders, key = { it }) { folderName ->
+                    DrawerFolderItem(
+                        title = folderName,
+                        countText = folderCount(folderName).toString(),
+                        selected = selectedFolder == folderName,
+                        leading = { DrawerCategoryIcon(DrawerIconKind.Folder) },
+                        onClick = { onSelectFolder(folderName) },
+                        onRename = { onRenameFolder(folderName) },
+                        onDelete = { onDeleteFolder(folderName) }
+                    )
+                }
             }
         }
     }
@@ -502,28 +551,54 @@ private fun DrawerCategoryIcon(kind: DrawerIconKind) {
 @Composable
 private fun PatientListContent(
     patients: List<Patient>,
+    allPatients: List<Patient>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     onPatientClick: (Long) -> Unit,
     onPatientLongClick: (Patient) -> Unit
 ) {
-    if (patients.isEmpty()) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "暂无患者记录",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    val normalizedQuery = searchQuery.trim()
+    val visiblePatients = remember(patients, allPatients, normalizedQuery) {
+        if (normalizedQuery.isBlank()) {
+            patients
+        } else {
+            allPatients.filter { patient ->
+                patient.name.contains(normalizedQuery, ignoreCase = true)
+            }
         }
-    } else {
-        LazyColumn(
-            modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+    }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(normalizedQuery, visiblePatients.firstOrNull()?.patientId) {
+        if (normalizedQuery.isNotBlank() && visiblePatients.isNotEmpty()) {
+            listState.animateScrollToItem(0)
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (visiblePatients.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 56.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (allPatients.isEmpty()) "暂无患者记录" else "未找到匹配患者",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
             items(
-                items = patients,
+                items = visiblePatients,
                 key = { it.patientId }
             ) { patient ->
                 PatientCard(
@@ -533,6 +608,29 @@ private fun PatientListContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SearchIcon() {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(modifier = Modifier.size(24.dp)) {
+        drawCircle(
+            color = color,
+            radius = 6.5.dp.toPx(),
+            center = Offset(10.dp.toPx(), 10.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        )
+        drawLine(
+            color = color,
+            start = Offset(15.dp.toPx(), 15.dp.toPx()),
+            end = Offset(20.dp.toPx(), 20.dp.toPx()),
+            strokeWidth = 2.2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
     }
 }
 

@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,23 +75,61 @@ fun NewVisitScreen(
     val formulaNameRequester = remember { FocusRequester() }
     val doseCountRequester = remember { FocusRequester() }
     val usageRequester = remember { FocusRequester() }
+    val patentMedicineAcupunctureRequester = remember { FocusRequester() }
     val medicationAdjustmentsRequester = remember { FocusRequester() }
-    var visitDateText by remember { mutableStateOf(defaultVisitDateText()) }
-    var solarTerm by remember { mutableStateOf("") }
+    val initialVisitDateText = remember { defaultVisitDateText() }
+    var visitDateText by remember { mutableStateOf(initialVisitDateText) }
+    var solarTerm by remember {
+        mutableStateOf(
+            parseVisitDateTimeOrNull(initialVisitDateText)
+                ?.let(::solarTermForVisitDate)
+                .orEmpty()
+        )
+    }
     var weather by remember { mutableStateOf("") }
     var chiefComplaint by remember { mutableStateOf("") }
     var presentIllness by remember { mutableStateOf("") }
     var pulseDescription by remember { mutableStateOf("") }
     var corePathogenesis by remember { mutableStateOf("") }
     var treatmentMethod by remember { mutableStateOf("") }
-    var formulaName by remember { mutableStateOf("自拟方") }
+    var formulaName by remember { mutableStateOf("") }
     var doseCountText by remember { mutableStateOf("7") }
     var usage by remember { mutableStateOf("水煎服") }
+    var patentMedicineAcupuncture by remember { mutableStateOf("") }
     var medicationAdjustments by remember { mutableStateOf("") }
     var clinicalNote by remember { mutableStateOf("") }
+    var pendingMedicationNameFocusId by remember { mutableStateOf<Long?>(null) }
+    var showImportConfirmDialog by remember { mutableStateOf(false) }
 
     val medicationRows = remember {
         mutableStateListOf(MedicationRowState())
+    }
+
+    fun importLatestVisitInfo() {
+        viewModel.importLatestPrescription(patientId) { draft ->
+            weather = draft.weather
+            chiefComplaint = draft.chiefComplaint
+            presentIllness = draft.presentIllness
+            pulseDescription = draft.pulseDescription
+            corePathogenesis = draft.corePathogenesis
+            treatmentMethod = draft.treatmentMethod
+            formulaName = draft.formulaName.takeUnless { it == "自拟方" }.orEmpty()
+            doseCountText = draft.doseCount.toString()
+            usage = draft.usage
+            patentMedicineAcupuncture = draft.patentMedicineAcupuncture
+            medicationAdjustments = draft.medicationAdjustments
+            clinicalNote = draft.clinicalNote
+            medicationRows.clear()
+            medicationRows.addAll(
+                draft.medications.map {
+                    MedicationRowState(
+                        name = it.name,
+                        dosage = it.dosage.toString(),
+                        decoctionMethod = it.decoctionMethod
+                    )
+                }.ifEmpty { listOf(MedicationRowState()) }
+            )
+        }
     }
 
     Scaffold(
@@ -120,6 +161,7 @@ fun NewVisitScreen(
                                 pulseDescription = pulseDescription,
                                 corePathogenesis = corePathogenesis,
                                 treatmentMethod = treatmentMethod,
+                                patentMedicineAcupuncture = patentMedicineAcupuncture,
                                 clinicalNote = buildClinicalNote(
                                     medicationAdjustments = medicationAdjustments,
                                     clinicalNote = clinicalNote
@@ -146,10 +188,20 @@ fun NewVisitScreen(
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showImportConfirmDialog = true },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                Text("导入上次就诊信息")
+            }
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier
+                .padding(innerPadding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -157,7 +209,12 @@ fun NewVisitScreen(
                 FormCard(title = "节气与天气") {
                     OutlinedTextField(
                         value = visitDateText,
-                        onValueChange = { visitDateText = it },
+                        onValueChange = { value ->
+                            visitDateText = value
+                            parseVisitDateTimeOrNull(value)?.let { dateTime ->
+                                solarTerm = solarTermForVisitDate(dateTime)
+                            }
+                        },
                         label = { Text("就诊时间") },
                         placeholder = { Text("2026-05-06 14:30") },
                         singleLine = true,
@@ -294,33 +351,12 @@ fun NewVisitScreen(
                             text = "药材明细",
                             style = MaterialTheme.typography.titleSmall
                         )
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.importLatestPrescription(patientId) { draft ->
-                                    formulaName = draft.formulaName
-                                    doseCountText = draft.doseCount.toString()
-                                    usage = draft.usage
-                                    medicationRows.clear()
-                                    medicationRows.addAll(
-                                        draft.medications.map {
-                                            MedicationRowState(
-                                                name = it.name,
-                                                dosage = it.dosage.toString(),
-                                                decoctionMethod = it.decoctionMethod
-                                            )
-                                        }.ifEmpty { listOf(MedicationRowState()) }
-                                    )
-                                }
-                            }
-                        ) {
-                            Text("导入上次处方")
-                        }
                     }
                     medicationRows.forEachIndexed { index, row ->
+                        val nextRow = medicationRows.getOrNull(index + 1)
                         MedicationInputRow(
                             row = row,
-                            nextRequester = medicationRows.getOrNull(index + 1)?.nameRequester
-                                ?: doseCountRequester,
+                            nextRequester = nextRow?.nameRequester ?: doseCountRequester,
                             onNameChange = { value ->
                                 medicationRows.update(row.id) { it.copy(name = value) }
                             },
@@ -336,7 +372,18 @@ fun NewVisitScreen(
                                 } else {
                                     medicationRows[0] = MedicationRowState(id = row.id)
                                 }
-                            }
+                            },
+                            onAddNextRow = if (nextRow == null) {
+                                {
+                                    val newRow = MedicationRowState()
+                                    medicationRows.add(newRow)
+                                    pendingMedicationNameFocusId = newRow.id
+                                }
+                            } else {
+                                null
+                            },
+                            requestNameFocus = pendingMedicationNameFocusId == row.id,
+                            onNameFocusHandled = { pendingMedicationNameFocusId = null }
                         )
                     }
                     OutlinedButton(
@@ -375,13 +422,30 @@ fun NewVisitScreen(
                             label = { Text("煎服方法") },
                             singleLine = true,
                             keyboardOptions = nextOptions,
-                            keyboardActions = KeyboardActions(onNext = { medicationAdjustmentsRequester.requestFocus() }),
+                            keyboardActions = KeyboardActions(onNext = { patentMedicineAcupunctureRequester.requestFocus() }),
                             modifier = Modifier
                                 .weight(2f)
                                 .focusRequester(usageRequester)
-                                .moveFocusOnEnter(medicationAdjustmentsRequester)
+                                .moveFocusOnEnter(patentMedicineAcupunctureRequester)
                         )
                     }
+                }
+            }
+
+            item {
+                FormCard(title = "配合使用成药/针灸") {
+                    OutlinedTextField(
+                        value = patentMedicineAcupuncture,
+                        onValueChange = { patentMedicineAcupuncture = it },
+                        placeholder = { Text("记录中成药、针灸、外治或其他配合方案") },
+                        minLines = 3,
+                        keyboardOptions = nextOptions,
+                        keyboardActions = KeyboardActions(onNext = { medicationAdjustmentsRequester.requestFocus() }),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(patentMedicineAcupunctureRequester)
+                            .moveFocusOnEnter(medicationAdjustmentsRequester)
+                    )
                 }
             }
 
@@ -410,11 +474,35 @@ fun NewVisitScreen(
                         placeholder = { Text("记录本次思路、预后判断或特殊观察点") },
                         minLines = 4,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
                     )
                 }
             }
         }
+    }
+
+    if (showImportConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirmDialog = false },
+            title = { Text("导入上次就诊信息？") },
+            text = { Text("导入后会覆盖当前页面中已填写的就诊信息。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportConfirmDialog = false
+                        importLatestVisitInfo()
+                    }
+                ) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportConfirmDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
@@ -425,10 +513,18 @@ private fun MedicationInputRow(
     onNameChange: (String) -> Unit,
     onDosageChange: (String) -> Unit,
     onDecoctionMethodChange: (String) -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onAddNextRow: (() -> Unit)?,
+    requestNameFocus: Boolean,
+    onNameFocusHandled: () -> Unit
 ) {
-    val focusManager = LocalFocusManager.current
     val nextOptions = KeyboardOptions(imeAction = ImeAction.Next)
+    LaunchedEffect(requestNameFocus) {
+        if (requestNameFocus) {
+            row.nameRequester.requestFocus()
+            onNameFocusHandled()
+        }
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -438,7 +534,7 @@ private fun MedicationInputRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             OutlinedTextField(
                 value = row.name,
@@ -448,13 +544,13 @@ private fun MedicationInputRow(
                 keyboardOptions = nextOptions,
                 keyboardActions = KeyboardActions(onNext = { row.dosageRequester.requestFocus() }),
                 modifier = Modifier
-                        .weight(1.55f)
-                        .height(64.dp)
-                        .focusRequester(row.nameRequester)
-                        .moveFocusOnEnter(row.dosageRequester)
+                    .weight(1.45f)
+                    .height(64.dp)
+                    .focusRequester(row.nameRequester)
+                    .moveFocusOnEnter(row.dosageRequester)
             )
             Row(
-                modifier = Modifier.weight(1.05f),
+                modifier = Modifier.weight(1.15f),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 OutlinedTextField(
@@ -462,18 +558,18 @@ private fun MedicationInputRow(
                     onValueChange = { value ->
                         onDosageChange(value.filter { it.isDigit() || it == '.' })
                     },
-                    label = { Text("剂量") },
+                    label = { Text("剂量", maxLines = 1) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
                         imeAction = ImeAction.Next
                     ),
-                    keyboardActions = KeyboardActions(onNext = { row.decoctionMethodRequester.requestFocus() }),
+                    keyboardActions = KeyboardActions(onNext = { onAddNextRow?.invoke() ?: nextRequester.requestFocus() }),
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp)
                         .focusRequester(row.dosageRequester)
-                        .moveFocusOnEnter(row.decoctionMethodRequester)
+                        .moveFocusOnEnter(onAddNextRow, nextRequester)
                 )
                 Text(
                     text = "g",
@@ -481,18 +577,11 @@ private fun MedicationInputRow(
                     fontSize = 16.sp
                 )
             }
-            OutlinedTextField(
+            DecoctionMethodDropdown(
                 value = row.decoctionMethod,
                 onValueChange = onDecoctionMethodChange,
-                label = { Text("煎服法") },
-                singleLine = true,
-                keyboardOptions = nextOptions,
-                keyboardActions = KeyboardActions(onNext = { nextRequester.requestFocus() }),
                 modifier = Modifier
-                    .weight(1.25f)
-                    .height(64.dp)
-                    .focusRequester(row.decoctionMethodRequester)
-                    .moveFocusOnEnter(nextRequester)
+                    .weight(0.95f)
             )
             IconButton(
                 onClick = onRemove,
@@ -514,7 +603,8 @@ private fun FormCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -540,8 +630,7 @@ private data class MedicationRowState(
     val dosage: String = "",
     val decoctionMethod: String = "",
     val nameRequester: FocusRequester = FocusRequester(),
-    val dosageRequester: FocusRequester = FocusRequester(),
-    val decoctionMethodRequester: FocusRequester = FocusRequester()
+    val dosageRequester: FocusRequester = FocusRequester()
 )
 
 private fun MutableList<MedicationRowState>.update(
@@ -568,12 +657,17 @@ private fun defaultVisitDateText(): String {
 }
 
 private fun parseVisitDateText(text: String): Long {
+    return parseVisitDateTimeOrNull(text)
+        ?.atZone(ZoneId.systemDefault())
+        ?.toInstant()
+        ?.toEpochMilli()
+        ?: System.currentTimeMillis()
+}
+
+private fun parseVisitDateTimeOrNull(text: String): LocalDateTime? {
     return runCatching {
         LocalDateTime.parse(text.trim(), visitDateFormatter)
-            .atZone(ZoneId.systemDefault())
-            .toInstant()
-            .toEpochMilli()
-    }.getOrDefault(System.currentTimeMillis())
+    }.getOrNull()
 }
 
 private fun buildClinicalNote(
@@ -601,6 +695,18 @@ private fun Modifier.moveFocusOnEnter(focusManager: FocusManager): Modifier = on
 private fun Modifier.moveFocusOnEnter(nextRequester: FocusRequester): Modifier = onPreviewKeyEvent { event ->
     if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
         nextRequester.requestFocus()
+        true
+    } else {
+        false
+    }
+}
+
+private fun Modifier.moveFocusOnEnter(
+    onEnter: (() -> Unit)?,
+    nextRequester: FocusRequester
+): Modifier = onPreviewKeyEvent { event ->
+    if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+        onEnter?.invoke() ?: nextRequester.requestFocus()
         true
     } else {
         false

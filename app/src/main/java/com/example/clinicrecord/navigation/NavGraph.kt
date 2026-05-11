@@ -26,8 +26,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.clinicrecord.ui.NewVisitScreen
+import com.example.clinicrecord.ui.MedicationStatsScreen
 import com.example.clinicrecord.ui.PatientDetailScreen
 import com.example.clinicrecord.ui.PatientListScreen
+import com.example.clinicrecord.ui.EssayScreen
 import com.example.clinicrecord.ui.ProfileScreen
 import com.example.clinicrecord.ui.SettingsScreen
 import com.example.clinicrecord.ui.TrashScreen
@@ -40,8 +42,10 @@ object ClinicRoute {
     const val NewVisit = "new_visit"
     const val VisitDetail = "visit_detail"
     const val Profile = "profile"
+    const val Essay = "essay"
     const val Trash = "trash"
     const val Settings = "settings"
+    const val MedicationStats = "medication_stats"
     const val PatientIdArg = "patientId"
     const val VisitIdArg = "visitId"
 
@@ -106,8 +110,26 @@ fun ClinicNavGraph(
                 ProfileScreen(
                     viewModel = viewModel,
                     onTrashClick = { navController.navigate(ClinicRoute.Trash) },
+                    onMedicationStatsClick = { navController.navigate(ClinicRoute.MedicationStats) },
                     onSettingsClick = { navController.navigate(ClinicRoute.Settings) }
                 )
+            }
+        }
+
+        composable(route = ClinicRoute.Essay) {
+            MainTabScaffold(
+                selectedRoute = ClinicRoute.Essay,
+                onTabClick = { route ->
+                    navController.navigate(route) {
+                        popUpTo(ClinicRoute.PatientList) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            ) {
+                EssayScreen(viewModel = viewModel)
             }
         }
 
@@ -120,6 +142,13 @@ fun ClinicNavGraph(
 
         composable(route = ClinicRoute.Settings) {
             SettingsScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(route = ClinicRoute.MedicationStats) {
+            MedicationStatsScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() }
             )
@@ -200,7 +229,13 @@ private fun MainTabScaffold(
                     selected = selectedRoute == ClinicRoute.PatientList,
                     onClick = { onTabClick(ClinicRoute.PatientList) },
                     icon = { NotebookTabIcon(selected = selectedRoute == ClinicRoute.PatientList) },
-                    label = { Text("笔记") }
+                    label = { Text("病案") }
+                )
+                NavigationBarItem(
+                    selected = selectedRoute == ClinicRoute.Essay,
+                    onClick = { onTabClick(ClinicRoute.Essay) },
+                    icon = { EssayTabIcon(selected = selectedRoute == ClinicRoute.Essay) },
+                    label = { Text("随笔") }
                 )
                 NavigationBarItem(
                     selected = selectedRoute == ClinicRoute.Profile,
@@ -214,6 +249,39 @@ private fun MainTabScaffold(
         Box(modifier = Modifier.padding(innerPadding)) {
             content()
         }
+    }
+}
+
+@Composable
+private fun EssayTabIcon(selected: Boolean) {
+    val accent = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Canvas(modifier = Modifier.size(24.dp)) {
+        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        drawRoundRect(
+            color = accent,
+            topLeft = Offset(4.dp.toPx(), 4.dp.toPx()),
+            size = Size(16.dp.toPx(), 16.dp.toPx()),
+            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx()),
+            style = stroke
+        )
+        drawLine(
+            color = accent,
+            start = Offset(8.dp.toPx(), 9.dp.toPx()),
+            end = Offset(16.dp.toPx(), 9.dp.toPx()),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = accent,
+            start = Offset(8.dp.toPx(), 14.dp.toPx()),
+            end = Offset(13.dp.toPx(), 14.dp.toPx()),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
     }
 }
 

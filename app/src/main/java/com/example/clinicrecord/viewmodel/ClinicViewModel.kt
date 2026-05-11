@@ -8,6 +8,7 @@ import com.example.clinicrecord.data.DeepSeekClinicalApi
 import com.example.clinicrecord.data.DeepSeekClinicalRequest
 import com.example.clinicrecord.data.DeletedRecord
 import com.example.clinicrecord.data.MedicationItem
+import com.example.clinicrecord.data.MedicationUsageStat
 import com.example.clinicrecord.data.Patient
 import com.example.clinicrecord.data.PatientWithFullVisits
 import com.example.clinicrecord.data.Prescription
@@ -70,6 +71,14 @@ class ClinicViewModel(
 
     val recentDeletedRecords: StateFlow<List<DeletedRecord>> = clinicDao
         .observeDeletedRecordsSince(System.currentTimeMillis() - RECENT_DELETE_RETENTION_MILLIS)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    val medicationUsageStats: StateFlow<List<MedicationUsageStat>> = clinicDao
+        .observeMedicationUsageStats()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -212,14 +221,24 @@ class ClinicViewModel(
         onImported: (PrescriptionDraft) -> Unit
     ) {
         viewModelScope.launch {
-            val latest = clinicDao.getLatestVisitWithPrescriptionAndItems(patientId)
-            val prescription = latest?.prescriptionWithItems?.prescription ?: return@launch
+            val latest = clinicDao.getLatestVisitWithPrescriptionAndItems(patientId) ?: return@launch
+            val prescription = latest.prescriptionWithItems?.prescription
+            val noteParts = latest.visit.clinicalNote.toClinicalNoteParts()
             onImported(
                 PrescriptionDraft(
-                    formulaName = prescription.formulaName,
-                    doseCount = prescription.doseCount,
-                    usage = prescription.usage,
-                    medications = latest.prescriptionWithItems.items.map {
+                    weather = latest.visit.weather,
+                    chiefComplaint = latest.visit.chiefComplaint,
+                    presentIllness = latest.visit.presentIllness,
+                    pulseDescription = latest.visit.pulseDescription,
+                    corePathogenesis = latest.visit.corePathogenesis,
+                    treatmentMethod = latest.visit.treatmentMethod,
+                    formulaName = prescription?.formulaName ?: "自拟方",
+                    doseCount = prescription?.doseCount ?: 7,
+                    usage = prescription?.usage ?: "水煎服",
+                    patentMedicineAcupuncture = latest.visit.patentMedicineAcupuncture,
+                    medicationAdjustments = noteParts.medicationAdjustments,
+                    clinicalNote = noteParts.clinicalNote,
+                    medications = latest.prescriptionWithItems?.items.orEmpty().map {
                         ConsultationMedicationInput(
                             name = it.medicationName,
                             dosage = it.dosage,
@@ -306,6 +325,7 @@ class ClinicViewModel(
                         pulseDescription = payload["pulseDescription"].orEmpty(),
                         corePathogenesis = payload["corePathogenesis"].orEmpty(),
                         treatmentMethod = payload["treatmentMethod"].orEmpty(),
+                        patentMedicineAcupuncture = payload["patentMedicineAcupuncture"].orEmpty(),
                         clinicalNote = payload["clinicalNote"].orEmpty()
                     )
                     val prescription = Prescription(
@@ -346,6 +366,22 @@ class ClinicViewModel(
         }
     }
 
+    fun moveEssayToTrash(text: String) {
+        val normalized = text.trim()
+        if (normalized.isBlank()) return
+        viewModelScope.launch {
+            clinicDao.insertDeletedRecord(
+                DeletedRecord(
+                    recordType = "随笔",
+                    title = normalized.lineSequence().firstOrNull().orEmpty().take(18).ifBlank { "未命名随笔" },
+                    summary = normalized.replace('\n', ' ').take(60),
+                    payload = normalized,
+                    deletedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
     fun saveFullConsultation(
         patientId: Long,
         visitDate: Long,
@@ -356,6 +392,7 @@ class ClinicViewModel(
         pulseDescription: String,
         corePathogenesis: String,
         treatmentMethod: String,
+        patentMedicineAcupuncture: String,
         clinicalNote: String,
         formulaName: String,
         doseCount: Int,
@@ -375,6 +412,7 @@ class ClinicViewModel(
                 pulseDescription = pulseDescription.trim(),
                 corePathogenesis = corePathogenesis.trim(),
                 treatmentMethod = treatmentMethod.trim(),
+                patentMedicineAcupuncture = patentMedicineAcupuncture.trim(),
                 clinicalNote = clinicalNote.trim()
             )
             val prescription = Prescription(
@@ -413,6 +451,7 @@ class ClinicViewModel(
         pulseDescription: String,
         corePathogenesis: String,
         treatmentMethod: String,
+        patentMedicineAcupuncture: String,
         clinicalNote: String,
         formulaName: String,
         doseCount: Int,
@@ -430,6 +469,7 @@ class ClinicViewModel(
                 pulseDescription = pulseDescription.trim(),
                 corePathogenesis = corePathogenesis.trim(),
                 treatmentMethod = treatmentMethod.trim(),
+                patentMedicineAcupuncture = patentMedicineAcupuncture.trim(),
                 clinicalNote = clinicalNote.trim()
             )
             val oldPrescription = current.prescriptionWithItems?.prescription
@@ -507,6 +547,7 @@ private fun VisitWithPrescriptionAndItems.toDeletedRecord(): DeletedRecord {
             appendLine("pulseDescription=${visit.pulseDescription}")
             appendLine("corePathogenesis=${visit.corePathogenesis}")
             appendLine("treatmentMethod=${visit.treatmentMethod}")
+            appendLine("patentMedicineAcupuncture=${visit.patentMedicineAcupuncture}")
             appendLine("clinicalNote=${visit.clinicalNote}")
             prescriptionWithItems?.prescription?.let { prescription ->
                 appendLine("formulaName=${prescription.formulaName}")
@@ -544,8 +585,46 @@ data class ConsultationMedicationInput(
 )
 
 data class PrescriptionDraft(
+    val weather: String,
+    val chiefComplaint: String,
+    val presentIllness: String,
+    val pulseDescription: String,
+    val corePathogenesis: String,
+    val treatmentMethod: String,
     val formulaName: String,
     val doseCount: Int,
     val usage: String,
+    val patentMedicineAcupuncture: String,
+    val medicationAdjustments: String,
+    val clinicalNote: String,
     val medications: List<ConsultationMedicationInput>
 )
+
+private data class ClinicalNoteParts(
+    val medicationAdjustments: String,
+    val clinicalNote: String
+)
+
+private fun String.toClinicalNoteParts(): ClinicalNoteParts {
+    val trimmed = trim()
+    val prefix = "加减用药："
+    if (!trimmed.startsWith(prefix)) {
+        return ClinicalNoteParts(
+            medicationAdjustments = "",
+            clinicalNote = trimmed
+        )
+    }
+    val content = trimmed.removePrefix(prefix)
+    val separatorIndex = content.indexOf("\n\n")
+    return if (separatorIndex == -1) {
+        ClinicalNoteParts(
+            medicationAdjustments = content.trim(),
+            clinicalNote = ""
+        )
+    } else {
+        ClinicalNoteParts(
+            medicationAdjustments = content.substring(0, separatorIndex).trim(),
+            clinicalNote = content.substring(separatorIndex + 2).trim()
+        )
+    }
+}

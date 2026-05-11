@@ -28,6 +28,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +46,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val selectedStyle by viewModel.selectedColorStyle.collectAsState()
+    var showColorStyles by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -53,9 +57,17 @@ fun SettingsScreen(
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                     navigationIconContentColor = MaterialTheme.colorScheme.primary
                 ),
-                title = { Text("设置") },
+                title = { Text(if (showColorStyles) "主题颜色" else "设置") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
+                    TextButton(
+                        onClick = {
+                            if (showColorStyles) {
+                                showColorStyles = false
+                            } else {
+                                onBack()
+                            }
+                        }
+                    ) {
                         Text("返回")
                     }
                 }
@@ -69,26 +81,65 @@ fun SettingsScreen(
             contentPadding = PaddingValues(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                Text(
-                    text = "风格颜色",
-                    style = MaterialTheme.typography.titleLarge
-                )
+            if (showColorStyles) {
+                items(AppColorStyle.values()) { style ->
+                    ColorStyleCard(
+                        style = style,
+                        selected = selectedStyle == style,
+                        onClick = { viewModel.selectColorStyle(style) }
+                    )
+                }
+            } else {
+                item {
+                    SettingOptionCard(
+                        title = "主题颜色",
+                        value = selectedStyle.title,
+                        onClick = { showColorStyles = true }
+                    )
+                }
             }
-            item {
+        }
+    }
+}
+
+@Composable
+private fun SettingOptionCard(
+    title: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = MaterialTheme.shapes.large
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            LayeredSwatch(seed = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "选择一种接近示例图的柔和卡片配色。",
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = value,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            items(AppColorStyle.values()) { style ->
-                ColorStyleCard(
-                    style = style,
-                    selected = selectedStyle == style,
-                    onClick = { viewModel.selectColorStyle(style) }
-                )
-            }
+            Text(
+                text = "进入",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
@@ -128,11 +179,6 @@ private fun ColorStyleCard(
                 Text(
                     text = style.title,
                     style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = style.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(

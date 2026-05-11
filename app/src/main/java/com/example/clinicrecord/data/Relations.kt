@@ -64,3 +64,8 @@ data class ExperienceFormulaWithItems(
     )
     val items: List<ExperienceFormulaItem>
 )
+
+data class MedicationUsageStat(
+    val medicationName: String,
+    val usageCount: Long
+)

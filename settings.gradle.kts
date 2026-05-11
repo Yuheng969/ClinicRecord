@@ -24,5 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ClinicRecord"
 include(":app")
-include(":app")
  

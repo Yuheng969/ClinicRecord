@@ -164,6 +164,15 @@ abstract class ClinicDao {
     @Query("SELECT * FROM medication_items WHERE prescriptionOwnerId = :prescriptionId")
     abstract suspend fun getMedicationItemsForPrescription(prescriptionId: Long): List<MedicationItem>
 
+    @Query(
+        "SELECT TRIM(medicationName) AS medicationName, COUNT(*) AS usageCount " +
+            "FROM medication_items " +
+            "WHERE TRIM(medicationName) != '' " +
+            "GROUP BY TRIM(medicationName) " +
+            "ORDER BY usageCount DESC, medicationName ASC"
+    )
+    abstract fun observeMedicationUsageStats(): Flow<List<MedicationUsageStat>>
+
     @Query("DELETE FROM medication_items WHERE prescriptionOwnerId = :prescriptionId")
     abstract suspend fun deleteMedicationItemsForPrescription(prescriptionId: Long)
 

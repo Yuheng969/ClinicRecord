@@ -65,11 +65,19 @@ import java.io.File
 fun ProfileScreen(
     viewModel: ClinicViewModel,
     onTrashClick: () -> Unit,
+    onMedicationStatsClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val patients by viewModel.allPatients.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val deletedRecords by viewModel.recentDeletedRecords.collectAsState()
+    val essayCount = remember(context) {
+        context.getSharedPreferences("clinic_record_essays", Context.MODE_PRIVATE)
+            .getStringSet("items", emptySet())
+            .orEmpty()
+            .size
+    }
 
     LaunchedEffect(Unit) {
         viewModel.purgeExpiredDeletedRecords()
@@ -102,7 +110,7 @@ fun ProfileScreen(
                 CreationStatsCard(
                     patientCount = patients.size,
                     folderCount = folders.size,
-                    deletedCount = deletedRecords.size
+                    essayCount = essayCount
                 )
             }
 
@@ -116,6 +124,7 @@ fun ProfileScreen(
                     SettingsCard(
                         deletedCount = deletedRecords.size,
                         onTrashClick = onTrashClick,
+                        onMedicationStatsClick = onMedicationStatsClick,
                         onSettingsClick = onSettingsClick
                     )
                 }
@@ -477,7 +486,7 @@ private fun AvatarAdjustDialog(
 private fun CreationStatsCard(
     patientCount: Int,
     folderCount: Int,
-    deletedCount: Int
+    essayCount: Int
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -498,7 +507,7 @@ private fun CreationStatsCard(
             )
             StatItem("患者", patientCount.toString())
             StatItem("分类", folderCount.toString())
-            StatItem("最近删除", deletedCount.toString())
+            StatItem("随笔", essayCount.toString())
         }
     }
 }
@@ -523,6 +532,7 @@ private fun StatItem(label: String, value: String) {
 private fun SettingsCard(
     deletedCount: Int,
     onTrashClick: () -> Unit,
+    onMedicationStatsClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     Card(
@@ -535,6 +545,12 @@ private fun SettingsCard(
                 title = "最近删除",
                 trailing = deletedCount.toString(),
                 onClick = onTrashClick
+            )
+            HorizontalDivider()
+            ProfileRow(
+                title = "统计用药信息",
+                trailing = ">",
+                onClick = onMedicationStatsClick
             )
             HorizontalDivider()
             ProfileRow(

@@ -14,6 +14,7 @@ import com.example.clinicrecord.data.ClinicDatabase
 import com.example.clinicrecord.data.MIGRATION_1_2
 import com.example.clinicrecord.data.MIGRATION_2_3
 import com.example.clinicrecord.data.MIGRATION_3_4
+import com.example.clinicrecord.data.MIGRATION_4_5
 import com.example.clinicrecord.navigation.ClinicNavGraph
 import com.example.clinicrecord.ui.theme.AppColorStyle
 import com.example.clinicrecord.ui.theme.ClinicRecordTheme
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
             ClinicDatabase::class.java,
             "clinic_record.db"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
         val preferences = getSharedPreferences("clinic_record_settings", MODE_PRIVATE)
         val initialStyle = runCatching {

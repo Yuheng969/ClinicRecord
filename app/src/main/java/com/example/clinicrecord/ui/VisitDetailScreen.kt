@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -49,6 +50,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -143,13 +148,15 @@ fun VisitDetailScreen(
                 VisitEditContent(
                     detail = visitDetail,
                     viewModel = viewModel,
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier
+                        .padding(innerPadding),
                     onSaved = { isEditing = false }
                 )
             } else {
                 VisitDetailContent(
                     detail = visitDetail,
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
+                        .padding(innerPadding)
                 )
             }
         }
@@ -311,6 +318,15 @@ private fun VisitDetailContent(
         }
 
         item {
+            DetailCard(title = "配合使用成药/针灸") {
+                Text(
+                    text = visit.patentMedicineAcupuncture.ifBlank { "未记录" },
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        item {
             DetailCard(title = "加减用药") {
                 Text(
                     text = noteParts.medicationAdjustments.ifBlank { "未记录" },
@@ -336,7 +352,8 @@ private fun DetailCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -388,12 +405,69 @@ private fun MedicationGridRow(
     ) {
         repeat(4) { index ->
             val item = items.getOrNull(index)
-            Text(
-                text = item?.let { "${it.medicationName} ${it.dosage}${it.unit}" }.orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
+            MedicationGridCell(
+                item = item,
                 modifier = Modifier.weight(1f)
             )
         }
+    }
+}
+
+@Composable
+private fun MedicationGridCell(
+    item: MedicationItem?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = item?.medicationName.orEmpty(),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = doseWithMethodTag(item),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
+        )
+    }
+}
+
+private fun doseWithMethodTag(item: MedicationItem?): AnnotatedString {
+    if (item == null) return AnnotatedString("")
+    val tag = decoctionMethodShortTag(item.decoctionMethod)
+    return AnnotatedString.Builder()
+        .apply {
+            append("${item.dosage}${item.unit}")
+            if (tag.isNotBlank()) {
+                append(" ")
+                pushStyle(
+                    SpanStyle(
+                        baselineShift = BaselineShift.Superscript,
+                        fontSize = 11.sp
+                    )
+                )
+                append("($tag)")
+                pop()
+            }
+        }
+        .toAnnotatedString()
+}
+
+private fun decoctionMethodShortTag(method: String): String {
+    return when (method.trim()) {
+        "先煎" -> "先"
+        "后下" -> "后"
+        "包煎" -> "包"
+        "打碎" -> "碎"
+        "冲服" -> "冲"
+        "烊化" -> "烊"
+        "另煎" -> "另"
+        else -> ""
     }
 }
 
@@ -415,14 +489,21 @@ private fun VisitEditContent(
     val formulaNameRequester = remember { FocusRequester() }
     val doseCountRequester = remember { FocusRequester() }
     val usageRequester = remember { FocusRequester() }
+    val patentMedicineAcupunctureRequester = remember { FocusRequester() }
     val medicationAdjustmentsRequester = remember { FocusRequester() }
     val visit = detail.visit
     val prescription = detail.prescriptionWithItems?.prescription
     val originalItems = detail.prescriptionWithItems?.items.orEmpty()
     val initialNoteParts = remember(visit.visitId) { splitClinicalNote(visit.clinicalNote) }
 
-    var solarTerm by remember(visit.visitId) { mutableStateOf(visit.solarTerm) }
     var visitDateText by remember(visit.visitId) { mutableStateOf(formatEditVisitDate(visit.visitDate)) }
+    var solarTerm by remember(visit.visitId) {
+        mutableStateOf(
+            parseEditVisitDateTimeOrNull(formatEditVisitDate(visit.visitDate))
+                ?.let(::solarTermForVisitDate)
+                ?: visit.solarTerm
+        )
+    }
     var weather by remember(visit.visitId) { mutableStateOf(visit.weather) }
     var chiefComplaint by remember(visit.visitId) { mutableStateOf(visit.chiefComplaint) }
     var presentIllness by remember(visit.visitId) { mutableStateOf(visit.presentIllness) }
@@ -438,6 +519,8 @@ private fun VisitEditContent(
     var formulaName by remember(visit.visitId) { mutableStateOf(prescription?.formulaName ?: "自拟方") }
     var doseCountText by remember(visit.visitId) { mutableStateOf((prescription?.doseCount ?: 7).toString()) }
     var usage by remember(visit.visitId) { mutableStateOf(prescription?.usage ?: "水煎服") }
+    var patentMedicineAcupuncture by remember(visit.visitId) { mutableStateOf(visit.patentMedicineAcupuncture) }
+    var pendingMedicationNameFocusId by remember(visit.visitId) { mutableStateOf<Long?>(null) }
     val medicationRows = remember(visit.visitId) {
         mutableStateListOf<VisitMedicationEditRow>().apply {
             if (originalItems.isEmpty()) {
@@ -470,7 +553,12 @@ private fun VisitEditContent(
                 )
                 OutlinedTextField(
                     value = visitDateText,
-                    onValueChange = { visitDateText = it },
+                    onValueChange = { value ->
+                        visitDateText = value
+                        parseEditVisitDateTimeOrNull(value)?.let { dateTime ->
+                            solarTerm = solarTermForVisitDate(dateTime)
+                        }
+                    },
                     label = { Text("就诊时间") },
                     placeholder = { Text("2026-05-06 14:30") },
                     singleLine = true,
@@ -573,10 +661,10 @@ private fun VisitEditContent(
                     }
                 }
                 medicationRows.forEachIndexed { index, row ->
+                    val nextRow = medicationRows.getOrNull(index + 1)
                     MedicationEditRow(
                         row = row,
-                        nextRequester = medicationRows.getOrNull(index + 1)?.nameRequester
-                            ?: doseCountRequester,
+                        nextRequester = nextRow?.nameRequester ?: doseCountRequester,
                         onNameChange = { value ->
                             medicationRows.update(row.id) { it.copy(name = value) }
                         },
@@ -592,7 +680,18 @@ private fun VisitEditContent(
                             } else {
                                 medicationRows[0] = VisitMedicationEditRow(id = row.id)
                             }
-                        }
+                        },
+                        onAddNextRow = if (nextRow == null) {
+                            {
+                                val newRow = VisitMedicationEditRow()
+                                medicationRows.add(newRow)
+                                pendingMedicationNameFocusId = newRow.id
+                            }
+                        } else {
+                            null
+                        },
+                        requestNameFocus = pendingMedicationNameFocusId == row.id,
+                        onNameFocusHandled = { pendingMedicationNameFocusId = null }
                     )
                 }
                 Row(
@@ -620,13 +719,30 @@ private fun VisitEditContent(
                         label = { Text("煎服方法") },
                         singleLine = true,
                         keyboardOptions = nextOptions,
-                        keyboardActions = KeyboardActions(onNext = { medicationAdjustmentsRequester.requestFocus() }),
+                        keyboardActions = KeyboardActions(onNext = { patentMedicineAcupunctureRequester.requestFocus() }),
                         modifier = Modifier
                             .weight(2f)
                             .focusRequester(usageRequester)
-                            .moveFocusOnEnter(medicationAdjustmentsRequester)
+                            .moveFocusOnEnter(patentMedicineAcupunctureRequester)
                     )
                 }
+            }
+        }
+
+        item {
+            DetailCard(title = "配合使用成药/针灸") {
+                OutlinedTextField(
+                    value = patentMedicineAcupuncture,
+                    onValueChange = { patentMedicineAcupuncture = it },
+                    placeholder = { Text("记录中成药、针灸、外治或其他配合方案") },
+                    minLines = 3,
+                    keyboardOptions = nextOptions,
+                    keyboardActions = KeyboardActions(onNext = { medicationAdjustmentsRequester.requestFocus() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(patentMedicineAcupunctureRequester)
+                        .moveFocusOnEnter(medicationAdjustmentsRequester)
+                )
             }
         }
 
@@ -673,6 +789,7 @@ private fun VisitEditContent(
                         pulseDescription = pulseDescription,
                         corePathogenesis = corePathogenesis,
                         treatmentMethod = treatmentMethod,
+                        patentMedicineAcupuncture = patentMedicineAcupuncture,
                         clinicalNote = buildClinicalNote(
                             medicationAdjustments = medicationAdjustments,
                             clinicalNote = clinicalNote
@@ -748,12 +865,21 @@ private fun MedicationEditRow(
     onNameChange: (String) -> Unit,
     onDosageChange: (String) -> Unit,
     onDecoctionMethodChange: (String) -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onAddNextRow: (() -> Unit)?,
+    requestNameFocus: Boolean,
+    onNameFocusHandled: () -> Unit
 ) {
     val nextOptions = KeyboardOptions(imeAction = ImeAction.Next)
+    LaunchedEffect(requestNameFocus) {
+        if (requestNameFocus) {
+            row.nameRequester.requestFocus()
+            onNameFocusHandled()
+        }
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         OutlinedTextField(
             value = row.name,
@@ -763,13 +889,13 @@ private fun MedicationEditRow(
             keyboardOptions = nextOptions,
             keyboardActions = KeyboardActions(onNext = { row.dosageRequester.requestFocus() }),
             modifier = Modifier
-                .weight(1.55f)
+                .weight(1.45f)
                 .height(64.dp)
                 .focusRequester(row.nameRequester)
                 .moveFocusOnEnter(row.dosageRequester)
         )
         Row(
-            modifier = Modifier.weight(1.05f),
+            modifier = Modifier.weight(1.15f),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             OutlinedTextField(
@@ -777,18 +903,18 @@ private fun MedicationEditRow(
                 onValueChange = { value ->
                     onDosageChange(value.filter { it.isDigit() || it == '.' })
                 },
-                label = { Text("剂量") },
+                label = { Text("剂量", maxLines = 1) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next
                 ),
-                keyboardActions = KeyboardActions(onNext = { row.decoctionMethodRequester.requestFocus() }),
+                keyboardActions = KeyboardActions(onNext = { onAddNextRow?.invoke() ?: nextRequester.requestFocus() }),
                 modifier = Modifier
                     .weight(1f)
                     .height(64.dp)
                     .focusRequester(row.dosageRequester)
-                    .moveFocusOnEnter(row.decoctionMethodRequester)
+                    .moveFocusOnEnter(onAddNextRow, nextRequester)
             )
             Text(
                 text = "g",
@@ -796,18 +922,11 @@ private fun MedicationEditRow(
                 fontSize = 16.sp
             )
         }
-        OutlinedTextField(
+        DecoctionMethodDropdown(
             value = row.decoctionMethod,
             onValueChange = onDecoctionMethodChange,
-            label = { Text("煎服法") },
-            singleLine = true,
-            keyboardOptions = nextOptions,
-            keyboardActions = KeyboardActions(onNext = { nextRequester.requestFocus() }),
             modifier = Modifier
-                .weight(1.25f)
-                .height(64.dp)
-                .focusRequester(row.decoctionMethodRequester)
-                .moveFocusOnEnter(nextRequester)
+                .weight(0.95f)
         )
         IconButton(
             onClick = onRemove,
@@ -828,8 +947,7 @@ private data class VisitMedicationEditRow(
     val dosage: String = "",
     val decoctionMethod: String = "",
     val nameRequester: FocusRequester = FocusRequester(),
-    val dosageRequester: FocusRequester = FocusRequester(),
-    val decoctionMethodRequester: FocusRequester = FocusRequester()
+    val dosageRequester: FocusRequester = FocusRequester()
 )
 
 private fun MutableList<VisitMedicationEditRow>.update(
@@ -858,12 +976,17 @@ private fun formatEditVisitDate(timestamp: Long): String {
 }
 
 private fun parseVisitDateText(text: String): Long {
+    return parseEditVisitDateTimeOrNull(text)
+        ?.atZone(ZoneId.systemDefault())
+        ?.toInstant()
+        ?.toEpochMilli()
+        ?: System.currentTimeMillis()
+}
+
+private fun parseEditVisitDateTimeOrNull(text: String): LocalDateTime? {
     return runCatching {
         LocalDateTime.parse(text.trim(), editVisitDateFormatter)
-            .atZone(ZoneId.systemDefault())
-            .toInstant()
-            .toEpochMilli()
-    }.getOrDefault(System.currentTimeMillis())
+    }.getOrNull()
 }
 
 private fun formatVisitDate(timestamp: Long): String {
@@ -885,6 +1008,18 @@ private fun Modifier.moveFocusOnEnter(focusManager: FocusManager): Modifier = on
 private fun Modifier.moveFocusOnEnter(nextRequester: FocusRequester): Modifier = onPreviewKeyEvent { event ->
     if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
         nextRequester.requestFocus()
+        true
+    } else {
+        false
+    }
+}
+
+private fun Modifier.moveFocusOnEnter(
+    onEnter: (() -> Unit)?,
+    nextRequester: FocusRequester
+): Modifier = onPreviewKeyEvent { event ->
+    if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+        onEnter?.invoke() ?: nextRequester.requestFocus()
         true
     } else {
         false
